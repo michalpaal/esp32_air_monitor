@@ -6,6 +6,7 @@ The ESP32 enters **deep sleep** between measurements to minimize power consumpti
 
 ![Display showing 6-cell grid with air quality readings]
 
+![Display](display.jpeg)
 ---
 
 ## 🛒 Bill of Materials
@@ -64,6 +65,8 @@ The ESP32 enters **deep sleep** between measurements to minimize power consumpti
 | GND | GND |
 | TX | GPIO13 |
 | RX | GPIO14 |
+
+![Wiring](wiring.jpeg)
 
 > **⚠️ Note on 3.3V:** The ESP32-DevKitC has only one 3.3V pin. Both the SCD40 and the e-paper need 3.3V — solder or twist their VCC wires together before connecting to the single pin.
 
