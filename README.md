@@ -2,11 +2,12 @@
 
 An indoor air quality monitor built with ESP32, displaying real-time readings on a 3.7" e-paper display. Measures CO2, temperature, humidity, and particulate matter (PM1.0, PM2.5, PM10).
 
-The ESP32 enters **deep sleep** between measurements to minimize power consumption.
+Sensors run continuously for stable readings. The display updates every 10 minutes.
 
-![Display showing 6-cell grid with air quality readings]
+[![Watch the video](photos/display.jpeg)](https://youtu.be/02VMEx7p5A8)
 
-![Display](case/photos/display.jpeg)
+> 📹 Click the image above to watch the project video
+
 ---
 
 ## 🛒 Bill of Materials
@@ -30,7 +31,7 @@ The ESP32 enters **deep sleep** between measurements to minimize power consumpti
 | Sensirion SCD40 | CO2 concentration (ppm), temperature (°C), relative humidity (%) |
 | Plantower PMS7003 | Fine dust particles: PM1.0, PM2.5, PM10 (µg/m³) |
 | WeAct 3.7" E-Paper | Displays all readings — retains image with no power needed |
-| ESP32-DevKitC | Coordinates everything, runs deep sleep to save power |
+| ESP32-DevKitC | Coordinates everything and drives the display |
 
 > **Why these sensors?** CO2 is a great proxy for air freshness indoors — high CO2 means poor ventilation and reduced cognitive performance. PM2.5 and PM10 measure fine dust that can irritate lungs. Together they give a complete picture of indoor air quality.
 
@@ -66,11 +67,30 @@ The ESP32 enters **deep sleep** between measurements to minimize power consumpti
 | TX | GPIO13 |
 | RX | GPIO14 |
 
-![Wiring](case/photos/wiring.jpeg)
+![Wiring](photos/wiring.jpeg)
 
 > **⚠️ Note on 3.3V:** The ESP32-DevKitC has only one 3.3V pin. Both the SCD40 and the e-paper need 3.3V — solder or twist their VCC wires together before connecting to the single pin.
 
 > **⚠️ Note on 5V:** The PMS7003 requires 5V. Connect it to the **VIN** pin (which passes through USB 5V), not the 3.3V pin.
+
+---
+
+## 🖨️ 3D Printed Case
+
+The enclosure was designed in Fusion 360 and 3D printed. It houses all components with cutouts for the e-paper display, USB port, and ventilation slots for the PMS7003 fan.
+
+![Case](photos/CasePhoto.jpeg)
+
+### Files
+
+| File | Format | Description |
+|------|--------|-------------|
+| `case/Case1.stl` | STL | Ready to print |
+| `case/Case2.stl` | STL | Ready to print |
+| `case/Case3.stl` | STL | Ready to print |
+| `case/Case1.f3d` | F3D | Fusion 360 source — edit dimensions as needed |
+
+> Print settings: 0.2mm layer height, 20% infill, no supports needed.
 
 ---
 
@@ -127,7 +147,7 @@ Go to **Tools → Manage Libraries** and install the four libraries listed in th
 
 ### Step 5 — Upload
 
-1. Open `air_monitor_final.ino`
+1. Open `air_monitor_v5.ino`
 2. Go to **Tools → Board** → select **ESP32 Dev Module**
 3. Go to **Tools → Port** → select `/dev/cu.usbserial-0001`
 4. Click the **→ Upload** button
@@ -156,7 +176,7 @@ The ESP32 sometimes needs manual help entering upload mode:
 - Make sure all 8 e-paper wires are firmly connected
 - Verify you are using GPIO23 for SDA and GPIO18 for SCL (not the I2C pins GPIO21/22)
 - The e-paper takes 3–5 seconds to refresh and will flicker — this is normal
-- The first update only happens after ~45 seconds (PMS7003 warmup)
+- The display updates immediately on first boot, then every 10 minutes
 
 ### ❌ CO2 values are unrealistically high (e.g. 3000+ ppm)
 
@@ -217,7 +237,7 @@ This is expected behavior. The PMS7003 is powered directly from VIN (5V USB), wh
 
 ### ❌ The display shows old data after restarting
 
-The e-paper display retains its image without power — this is a feature, not a bug. After restarting, the display will update with fresh data once the first measurement cycle completes (~45 seconds).
+The e-paper display retains its image without power — this is a feature, not a bug. After restarting, the display will update immediately with fresh data.
 
 ---
 
@@ -226,27 +246,20 @@ The e-paper display retains its image without power — this is a feature, not a
 **Q: Why does the screen flicker when updating?**
 E-paper displays refresh by rapidly cycling pixels between black and white. This flickering is completely normal and lasts 3–5 seconds.
 
-**Q: How often does it measure?**
-Every 10 minutes. You can change this by editing `SLEEP_DURATION_US` at the top of the sketch:
+**Q: How often does it update the display?**
+Every 10 minutes. You can change this by editing `DISPLAY_INTERVAL_MS` at the top of the sketch:
 ```cpp
-#define SLEEP_DURATION_US  (10ULL * 60ULL * 1000000ULL)  // change 10 to any number of minutes
+#define DISPLAY_INTERVAL_MS  (10UL * 60UL * 1000UL)  // change 10 to any number of minutes
 ```
 
-**Q: Can I run it on battery?**
-Yes! The deep sleep current draw is ~10 µA, making battery operation very practical. You would need a LiPo battery and a charging module (e.g. TP4056). A 1000 mAh battery would last several weeks in deep sleep, but the PMS7003 fan will drain it faster since it runs on VIN.
+**Q: How often does it read the sensors?**
+Continuously — the SCD40 produces a new reading every 5 seconds and the PMS7003 is always on. The Serial Monitor prints a summary every 30 seconds.
 
 **Q: The CO2 reading seems too high indoors — is it broken?**
 Probably not. Indoor CO2 levels above 1500 ppm are very common in closed rooms, especially bedrooms and offices. Try opening a window — you should see values drop toward 400–600 ppm within minutes. If values stay above 2000 ppm even outdoors, the sensor may need calibration (see Troubleshooting above).
 
-**Q: Can I change the measurement interval?**
-Yes, edit this line near the top of the sketch:
-```cpp
-#define SLEEP_DURATION_US  (10ULL * 60ULL * 1000000ULL)
-```
-Change `10` to any number of minutes. Keep in mind the PMS7003 needs 30 seconds of warmup each cycle regardless.
-
 **Q: Does the e-paper display need power to keep the image?**
-No — e-paper retains its image indefinitely with zero power. This is why it's ideal for a battery-powered monitor.
+No — e-paper retains its image indefinitely with zero power. When you unplug the device the last reading stays visible on screen.
 
 ---
 
@@ -286,10 +299,10 @@ No — e-paper retains its image indefinitely with zero power. This is why it's 
 
 | State | Current draw |
 |-------|-------------|
-| Active (measuring) | ~160 mA |
-| Deep sleep | ~10 µA |
+| Active (sensors + display update) | ~160 mA |
+| Active (sensors only, display idle) | ~100 mA |
 
-Each measurement cycle takes approximately **45 seconds** (30s PMS7003 warmup + 15s SCD40 stabilization), then the ESP32 sleeps for 10 minutes.
+Sensors run continuously. The display updates every 10 minutes and consumes extra current only during the ~3 second refresh.
 
 ---
 
