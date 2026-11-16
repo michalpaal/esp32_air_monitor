@@ -154,6 +154,18 @@ Go to **Tools → Manage Libraries** and install the four libraries listed in th
 
 ---
 
+## Local Wi-Fi dashboard
+
+From the repository root, create your local configuration:
+
+```bash
+cp firmware/air_monitor_final/wifi_secrets.example.h firmware/air_monitor_final/wifi_secrets.h
+```
+
+Fill in `WIFI_SSID` and `WIFI_PASSWORD` for a 2.4 GHz network in `wifi_secrets.h`. Git ignores this file. Upload `air_monitor_final.ino` and open the Serial Monitor at 115200 baud. Open the address printed after `[Web]` on a device on the same network.
+
+The dashboard shows live readings and up to 24 hours of one-minute averages. History is held in RAM and starts over on restart. It works over the local network without an internet connection. When Wi-Fi credentials are left blank, the firmware runs the sensors and e-paper with the web dashboard disabled.
+
 ## 🔧 Troubleshooting
 
 ### ❌ The USB port does not appear in Arduino IDE

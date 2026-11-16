@@ -18,6 +18,13 @@
 #include <SensirionI2cScd4x.h>
 #include <PMS.h>
 #include <HardwareSerial.h>
+#include "AirMonitorWeb.h"
+
+#if __has_include("wifi_secrets.h")
+#include "wifi_secrets.h"
+#else
+#include "wifi_secrets.example.h"
+#endif
 
 // =============================================================
 // CONFIGURATION
@@ -57,6 +64,7 @@ PMS            pms(pmsSerial);
 PMS::DATA      pmsData;
 
 SensirionI2cScd4x scd4x;
+AirMonitorWeb web;
 
 // =============================================================
 // SENSOR DATA
@@ -182,6 +190,7 @@ void pollSCD40(unsigned long now) {
   humidity = measuredHumidity;
   scd40_ok = true;
   lastScd40Sample = now;
+  web.addSCD40(now, co2, temperature, humidity);
   Serial.printf("[SCD40] CO2: %u ppm | Temp: %.1f C | Hum: %.1f%%\n",
                 unsigned(co2), temperature, humidity);
 }
@@ -197,6 +206,7 @@ void pollPMS7003(unsigned long now) {
     pm10 = pmsData.PM_AE_UG_10_0;
     pms_ok = true;
     lastPmsSample = now;
+    web.addPMS7003(now, pm1, pm25, pm10);
   }
 }
 
@@ -349,6 +359,7 @@ void setup() {
   }
 
   pmsSerial.begin(9600, SERIAL_8N1, PMS_RX_PIN, PMS_TX_PIN);
+  web.begin(WIFI_SSID, WIFI_PASSWORD);
   measurementStart = millis();
 }
 
@@ -372,5 +383,6 @@ void loop() {
     updateDisplay();
   }
 
+  web.poll();
   delay(1);
 }
