@@ -29,14 +29,14 @@
 #define SCD40_TIMEOUT_S     15                              // max wait for SCD40 data
 
 // E-Paper pins
-#define EPD_CS              5
-#define EPD_DC              17
-#define EPD_RST             16
-#define EPD_BUSY            4
+#define EPD_CS              27
+#define EPD_DC              26
+#define EPD_RST             25
+#define EPD_BUSY            33
 
-// PMS7003 UART pins
-#define PMS_RX_PIN          13
-#define PMS_TX_PIN          14
+// PMS7003 UART pins (sensor TX connected to GPIO16, sensor RX unconnected)
+#define PMS_RX_PIN          16
+#define PMS_TX_PIN          -1
 
 // SCD40 I2C pins
 #define I2C_SDA_PIN         21
@@ -185,15 +185,16 @@ void readSCD40() {
 }
 
 /**
- * @brief Wakes PMS7003, waits for fan stabilization,
- *        then reads PM1.0, PM2.5, and PM10.
+ * @brief Waits for stabilization, then reads a fresh PMS7003 frame in active mode.
  */
 void readPMS7003() {
   Serial.println("[PMS7003] Warming up...");
-  pms.wakeUp();
   delay(PMS_WARMUP_MS);
 
-  pms.requestRead();
+  // Discard samples that arrived during the warm-up wait.
+  while (pmsSerial.available() > 0) {
+    pmsSerial.read();
+  }
   pms_ok = pms.readUntil(pmsData, 3000);
 
   if (pms_ok) {
@@ -350,7 +351,7 @@ void setup() {
   bool isFirstBoot = (wakeupReason != ESP_SLEEP_WAKEUP_TIMER);
 
   // Init display
-  display.init(115200, isFirstBoot, 2, false);
+  display.init(115200, isFirstBoot, 50, false);
   display.setRotation(1);
 
   if (isFirstBoot) {
@@ -370,7 +371,6 @@ void setup() {
 
   // Init PMS7003
   pmsSerial.begin(9600, SERIAL_8N1, PMS_RX_PIN, PMS_TX_PIN);
-  pms.passiveMode();
 
   // Measure and update display
   Serial.println("[System] === START ===");
@@ -379,7 +379,7 @@ void setup() {
   updateDisplay();
   Serial.println("[System] === END ===");
 
-  // Deep sleep — GPIO disabled, sensors power down automatically
+  // Deep sleep pauses the ESP32. The sensors remain on the powered rails.
   Serial.printf("[System] Sleeping for %llu min...\n",
                 SLEEP_DURATION_US / 60000000ULL);
   Serial.flush();
