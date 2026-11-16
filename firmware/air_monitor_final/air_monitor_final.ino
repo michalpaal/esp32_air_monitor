@@ -4,7 +4,7 @@
  *
  * Measures CO2, temperature, humidity (SCD40) and particulate matter
  * PM1.0, PM2.5, PM10 (PMS7003). Results are shown on a 6-cell grid
- * on an e-paper display. The ESP32 uses deep sleep between measurements.
+ * on an e-paper display that refreshes every two minutes.
  *
  * @author  Riccardo Giannini
  * @license MIT
@@ -18,15 +18,15 @@
 #include <SensirionI2cScd4x.h>
 #include <PMS.h>
 #include <HardwareSerial.h>
-#include "esp_sleep.h"
 
 // =============================================================
 // CONFIGURATION
 // =============================================================
 
-#define SLEEP_DURATION_US   (10ULL * 60ULL * 1000000ULL)  // 10 minutes
-#define PMS_WARMUP_MS       30000                           // PMS7003 fan warmup
-#define SCD40_TIMEOUT_S     15                              // max wait for SCD40 data
+constexpr unsigned long DISPLAY_INTERVAL_MS = 120000;
+constexpr unsigned long PMS_WARMUP_MS = 30000;
+constexpr unsigned long SCD40_POLL_MS = 1000;
+constexpr unsigned long SAMPLE_MAX_AGE_MS = 15000;
 
 // E-Paper pins
 #define EPD_CS              27
@@ -70,6 +70,14 @@ uint16_t pm25        = 0;
 uint16_t pm10        = 0;
 bool     scd40_ok    = false;
 bool     pms_ok      = false;
+
+bool scd40Started = false;
+unsigned long measurementStart = 0;
+unsigned long lastScd40Poll = 0;
+unsigned long lastScd40Sample = 0;
+unsigned long lastPmsSample = 0;
+unsigned long lastDisplayRefresh = 0;
+bool firstDisplayRefresh = true;
 
 // =============================================================
 // AIR QUALITY RATING
@@ -144,67 +152,51 @@ Quality rateHumidity() {
 // SENSOR READING
 // =============================================================
 
-/**
- * @brief Starts SCD40 periodic measurement, waits for data,
- *        then reads CO2, temperature, and humidity.
- */
-void readSCD40() {
-  Serial.println("[SCD40] Starting...");
-
-  scd4x.stopPeriodicMeasurement();
-  delay(600);
-
-  uint16_t err = scd4x.startPeriodicMeasurement();
-  if (err != 0) {
-    Serial.printf("[SCD40] Start error: %d\n", err);
-    scd40_ok = false;
+void pollSCD40(unsigned long now) {
+  if (!scd40Started || now - lastScd40Poll < SCD40_POLL_MS) {
     return;
   }
+  lastScd40Poll = now;
 
   bool ready = false;
-  for (int i = 0; i < SCD40_TIMEOUT_S; i++) {
-    delay(1000);
-    scd4x.getDataReadyStatus(ready);
-    if (ready) break;
+  int16_t error = scd4x.getDataReadyStatus(ready);
+  if (error != 0) {
+    Serial.printf("[SCD40] Data-ready error: %d\n", int(error));
+    return;
   }
-
   if (!ready) {
-    Serial.println("[SCD40] Timeout");
-    scd40_ok = false;
     return;
   }
 
-  err      = scd4x.readMeasurement(co2, temperature, humidity);
-  scd40_ok = (err == 0 && co2 > 0);
+  uint16_t measuredCO2 = 0;
+  float measuredTemperature = 0.0f;
+  float measuredHumidity = 0.0f;
+  error = scd4x.readMeasurement(measuredCO2, measuredTemperature, measuredHumidity);
+  if (error != 0 || measuredCO2 == 0) {
+    Serial.printf("[SCD40] No valid sample (error: %d)\n", int(error));
+    return;
+  }
 
-  if (scd40_ok)
-    Serial.printf("[SCD40] CO2: %d ppm | Temp: %.1f C | Hum: %.1f%%\n",
-                  co2, temperature, humidity);
-  else
-    Serial.printf("[SCD40] Read error: %d\n", err);
+  co2 = measuredCO2;
+  temperature = measuredTemperature;
+  humidity = measuredHumidity;
+  scd40_ok = true;
+  lastScd40Sample = now;
+  Serial.printf("[SCD40] CO2: %u ppm | Temp: %.1f C | Hum: %.1f%%\n",
+                unsigned(co2), temperature, humidity);
 }
 
-/**
- * @brief Waits for stabilization, then reads a fresh PMS7003 frame in active mode.
- */
-void readPMS7003() {
-  Serial.println("[PMS7003] Warming up...");
-  delay(PMS_WARMUP_MS);
-
-  // Discard samples that arrived during the warm-up wait.
+void pollPMS7003(unsigned long now) {
   while (pmsSerial.available() > 0) {
-    pmsSerial.read();
-  }
-  pms_ok = pms.readUntil(pmsData, 3000);
+    if (!pms.read(pmsData) || now - measurementStart < PMS_WARMUP_MS) {
+      continue;
+    }
 
-  if (pms_ok) {
-    pm1  = pmsData.PM_AE_UG_1_0;
+    pm1 = pmsData.PM_AE_UG_1_0;
     pm25 = pmsData.PM_AE_UG_2_5;
     pm10 = pmsData.PM_AE_UG_10_0;
-    Serial.printf("[PMS7003] PM1: %d | PM2.5: %d | PM10: %d ug/m3\n",
-                  pm1, pm25, pm10);
-  } else {
-    Serial.println("[PMS7003] Read error");
+    pms_ok = true;
+    lastPmsSample = now;
   }
 }
 
@@ -335,57 +327,50 @@ void updateDisplay() {
 // ENTRY POINT
 // =============================================================
 
-/**
- * @brief Runs on every wake-up (cold boot or timer).
- *        Sequence: init → measure → display → deep sleep
- */
 void setup() {
   Serial.begin(115200);
 
-  // Disable built-in LED
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 
-  // Check wake-up reason
-  esp_sleep_wakeup_cause_t wakeupReason = esp_sleep_get_wakeup_cause();
-  bool isFirstBoot = (wakeupReason != ESP_SLEEP_WAKEUP_TIMER);
-
-  // Init display
-  display.init(115200, isFirstBoot, 50, false);
+  display.init(115200, true, 50, false);
   display.setRotation(1);
+  showSplashScreen();
 
-  if (isFirstBoot) {
-    Serial.println("[System] Cold boot");
-    showSplashScreen();
-    delay(2000);
-  } else {
-    Serial.println("[System] Wake from deep sleep");
-  }
-
-  // Init SCD40
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
   scd4x.begin(Wire, SCD40_I2C_ADDR_62);
-  delay(100);
+  delay(1000);
   scd4x.stopPeriodicMeasurement();
   delay(600);
+  int16_t error = scd4x.startPeriodicMeasurement();
+  scd40Started = (error == 0);
+  if (!scd40Started) {
+    Serial.printf("[SCD40] Start error: %d\n", int(error));
+  }
 
-  // Init PMS7003
   pmsSerial.begin(9600, SERIAL_8N1, PMS_RX_PIN, PMS_TX_PIN);
-
-  // Measure and update display
-  Serial.println("[System] === START ===");
-  readSCD40();
-  readPMS7003();
-  updateDisplay();
-  Serial.println("[System] === END ===");
-
-  // Deep sleep pauses the ESP32. The sensors remain on the powered rails.
-  Serial.printf("[System] Sleeping for %llu min...\n",
-                SLEEP_DURATION_US / 60000000ULL);
-  Serial.flush();
-  esp_sleep_enable_timer_wakeup(SLEEP_DURATION_US);
-  esp_deep_sleep_start();
+  measurementStart = millis();
 }
 
-// Never reached with deep sleep
-void loop() {}
+void loop() {
+  const unsigned long now = millis();
+  pollSCD40(now);
+  pollPMS7003(now);
+
+  const bool refreshDue = firstDisplayRefresh
+      ? (scd40_ok && pms_ok) || now - measurementStart >= PMS_WARMUP_MS + SAMPLE_MAX_AGE_MS
+      : now - lastDisplayRefresh >= DISPLAY_INTERVAL_MS;
+  if (refreshDue) {
+    scd40_ok = scd40_ok && now - lastScd40Sample < SAMPLE_MAX_AGE_MS;
+    pms_ok = pms_ok && now - lastPmsSample < SAMPLE_MAX_AGE_MS;
+    if (pms_ok) {
+      Serial.printf("[PMS7003] PM1: %u | PM2.5: %u | PM10: %u ug/m3\n",
+                    unsigned(pm1), unsigned(pm25), unsigned(pm10));
+    }
+    lastDisplayRefresh = now;
+    firstDisplayRefresh = false;
+    updateDisplay();
+  }
+
+  delay(1);
+}
