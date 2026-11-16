@@ -46,7 +46,8 @@ class AirMonitorWeb {
 
   void poll() {
     if (!enabled) return;
-    advanceHistory(millis());
+    const unsigned long now = millis();
+    advanceHistory(now);
 
     if (WiFi.status() != WL_CONNECTED) {
       if (listening) {
@@ -56,11 +57,15 @@ class AirMonitorWeb {
       return;
     }
 
-    if (!listening) {
+    const bool justConnected = !listening;
+    if (justConnected) {
       server.begin();
       listening = true;
+    }
+    if (justConnected || now - lastAddressPrint >= ADDRESS_PRINT_INTERVAL_MS) {
       Serial.print("[Web] http://");
       Serial.println(WiFi.localIP());
+      lastAddressPrint = now;
     }
     server.handleClient();
   }
@@ -70,11 +75,13 @@ class AirMonitorWeb {
   static constexpr size_t HISTORY_SIZE = 24 * 60;
   static constexpr unsigned long MINUTE_MS = 60000;
   static constexpr unsigned long LIVE_MAX_AGE_MS = 15000;
+  static constexpr unsigned long ADDRESS_PRINT_INTERVAL_MS = 30000;
 
   WebServer server{80};
   bool enabled = false;
   bool listening = false;
   unsigned long minuteStart = 0;
+  unsigned long lastAddressPrint = 0;
   unsigned long latestAt[METRIC_COUNT]{};
   bool hasLatest[METRIC_COUNT]{};
   float latest[METRIC_COUNT]{};
