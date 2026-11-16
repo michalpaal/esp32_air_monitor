@@ -56,7 +56,7 @@ const buttons = [...document.querySelectorAll('button[data-minutes]')];
 let minutes = 60;
 let rows = [];
 let historyRequest = 0;
-const cards = metrics.map(([label, unit]) => {
+const cards = metrics.map(([label, unit], index) => {
   const card = document.createElement('article');
   card.innerHTML = '<h2></h2><p class="value"><span>—</span><span class="unit"></span></p><canvas role="img"></canvas>';
   card.querySelector('h2').textContent = label;
@@ -64,10 +64,19 @@ const cards = metrics.map(([label, unit]) => {
   const canvas = card.querySelector('canvas');
   canvas.setAttribute('aria-label', 'Graf: ' + label);
   charts.append(card);
-  return {canvas, value: card.querySelector('.value span')};
+  const chart = {canvas, value: card.querySelector('.value span'), hoverX: null};
+  canvas.addEventListener('pointermove', event => {
+    chart.hoverX = event.clientX - canvas.getBoundingClientRect().left;
+    draw(chart, index);
+  });
+  canvas.addEventListener('pointerleave', () => {
+    chart.hoverX = null;
+    draw(chart, index);
+  });
+  return chart;
 });
 
-function draw({canvas}, index) {
+function draw({canvas, hoverX}, index) {
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
   const ratio = window.devicePixelRatio || 1;
@@ -94,6 +103,9 @@ function draw({canvas}, index) {
   }
 
   const x0 = 45, x1 = width - 7, y0 = 12, y1 = height - 23;
+  const minuteWidth = (x1 - x0) / minutes;
+  const xAt = slot => x1 - (series.length - 1 - slot) * minuteWidth;
+  const yAt = value => y1 - (value - low) * (y1 - y0) / (high - low);
   ctx.strokeStyle = '#e4ebe4';
   for (const [y, label] of [[y0, high], [y1, low]]) {
     ctx.beginPath();
@@ -115,8 +127,8 @@ function draw({canvas}, index) {
       previous = false;
       return;
     }
-    const x = x1 - (series.length - 1 - slot) * (x1 - x0) / minutes;
-    const y = y1 - (value - low) * (y1 - y0) / (high - low);
+    const x = xAt(slot);
+    const y = yAt(value);
     if (previous) ctx.lineTo(x, y);
     else ctx.moveTo(x, y);
     previous = true;
@@ -128,6 +140,40 @@ function draw({canvas}, index) {
     ctx.arc(lastPoint[0], lastPoint[1], 3, 0, 2 * Math.PI);
     ctx.fill();
   }
+
+  if (hoverX === null || hoverX < x0 || hoverX > x1 || minuteWidth <= 0) return;
+  const age = Math.round((x1 - hoverX) / minuteWidth);
+  const slot = series.length - 1 - age;
+  const value = series[slot];
+  if (!Number.isFinite(value)) return;
+
+  const x = xAt(slot);
+  const y = yAt(value);
+  ctx.strokeStyle = '#91a399';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, y0);
+  ctx.lineTo(x, y1);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, y, 4, 0, 2 * Math.PI);
+  ctx.fill();
+
+  const [, unit, digits] = metrics[index];
+  const reading = value.toLocaleString('sk-SK', {
+    minimumFractionDigits: digits, maximumFractionDigits: digits
+  }) + ' ' + unit;
+  const timeLabel = age === 0 ? 'Posledná uzavretá minúta' : 'Približne pred ' + age + ' min';
+  ctx.textAlign = 'left';
+  const boxWidth = Math.ceil(Math.max(ctx.measureText(reading).width, ctx.measureText(timeLabel).width)) + 16;
+  const boxX = x + boxWidth + 8 <= width ? x + 8 : Math.max(0, x - boxWidth - 8);
+  const boxY = Math.max(0, Math.min(y - 18, height - 36));
+
+  ctx.fillStyle = '#17251e';
+  ctx.fillRect(boxX, boxY, boxWidth, 36);
+  ctx.fillStyle = '#fff';
+  ctx.fillText(reading, boxX + 8, boxY + 14);
+  ctx.fillText(timeLabel, boxX + 8, boxY + 28);
 }
 
 async function refreshCurrent() {
