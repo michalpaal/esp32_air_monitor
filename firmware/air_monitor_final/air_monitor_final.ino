@@ -107,34 +107,19 @@ Quality rateCO2() {
   return                 {"BAD",      true};
 }
 
-// PM2.5 thresholds — WHO 2021
-Quality ratePM25() {
-  if (!pms_ok)    return {"N/A",      false};
-  if (pm25 <= 5)  return {"EXCELLENT",false};
-  if (pm25 <= 15) return {"GOOD",     false};
-  if (pm25 <= 25) return {"MODERATE", false};
-  if (pm25 <= 50) return {"POOR",     true};
-  return                 {"BAD",      true};
-}
+// European Environment Agency bands for hourly outdoor concentrations.
+// https://airindex.eea.europa.eu/AQI/
+constexpr int PM25_EEA_LIMITS[] = {5, 15, 50, 90, 140};
+constexpr int PM10_EEA_LIMITS[] = {15, 45, 120, 195, 270};
 
-// PM10 thresholds — WHO 2021
-Quality ratePM10() {
-  if (!pms_ok)     return {"N/A",      false};
-  if (pm10 <= 15)  return {"EXCELLENT",false};
-  if (pm10 <= 45)  return {"GOOD",     false};
-  if (pm10 <= 75)  return {"MODERATE", false};
-  if (pm10 <= 150) return {"POOR",     true};
-  return                  {"BAD",      true};
-}
-
-// PM1.0 thresholds
-Quality ratePM1() {
-  if (!pms_ok)   return {"N/A",      false};
-  if (pm1 <= 5)  return {"EXCELLENT",false};
-  if (pm1 <= 12) return {"GOOD",     false};
-  if (pm1 <= 20) return {"MODERATE", false};
-  if (pm1 <= 35) return {"POOR",     true};
-  return                {"BAD",      true};
+Quality rateHourlyPM(float average, const int (&limits)[5]) {
+  const long rounded = lroundf(average);
+  if (rounded <= limits[0]) return {"1h GOOD", false};
+  if (rounded <= limits[1]) return {"1h FAIR", false};
+  if (rounded <= limits[2]) return {"1h MODERATE", false};
+  if (rounded <= limits[3]) return {"1h POOR", true};
+  if (rounded <= limits[4]) return {"1h VERY POOR", true};
+  return {"1h EXT. POOR", true};
 }
 
 // Temperature thresholds (°C)
@@ -237,6 +222,7 @@ void drawCell(int x, int y, int w, int h,
   display.setFont(&FreeMonoBold9pt7b);
   display.setCursor(x + 6, y + 68);
   display.print(unit);
+  if (qualityLabel == nullptr) return;
 
   const int bandH = 22;
   const int bandY = y + h - bandH;
@@ -292,6 +278,12 @@ void updateDisplay() {
   const int GAP  = 1;
 
   char buf[16];
+  float hourlyPM25 = 0.0f;
+  float hourlyPM10 = 0.0f;
+  const bool hasHourlyPM = web.readHourlyPM(millis(), hourlyPM25, hourlyPM10);
+  const Quality waiting = {"1h WAITING", false};
+  const Quality p25q = hasHourlyPM ? rateHourlyPM(hourlyPM25, PM25_EEA_LIMITS) : waiting;
+  const Quality p10q = hasHourlyPM ? rateHourlyPM(hourlyPM10, PM10_EEA_LIMITS) : waiting;
 
   display.setFullWindow();
   display.firstPage();
@@ -313,17 +305,14 @@ void updateDisplay() {
     drawCell(XOFF + 2*(CW + GAP), YOFF, CW, CH,
              "HUMIDITY", buf, "%", hq.label, hq.invert);
 
-    Quality p1q = ratePM1();
     snprintf(buf, sizeof(buf), pms_ok ? "%d" : "--", pm1);
     drawCell(XOFF, YOFF + CH + GAP, CW, CH,
-             "PM 1.0", buf, "ug/m3", p1q.label, p1q.invert);
+             "PM 1.0", buf, "ug/m3", nullptr, false);
 
-    Quality p25q = ratePM25();
     snprintf(buf, sizeof(buf), pms_ok ? "%d" : "--", pm25);
     drawCell(XOFF + CW + GAP, YOFF + CH + GAP, CW, CH,
              "PM 2.5", buf, "ug/m3", p25q.label, p25q.invert);
 
-    Quality p10q = ratePM10();
     snprintf(buf, sizeof(buf), pms_ok ? "%d" : "--", pm10);
     drawCell(XOFF + 2*(CW + GAP), YOFF + CH + GAP, CW, CH,
              "PM 10", buf, "ug/m3", p10q.label, p10q.invert);

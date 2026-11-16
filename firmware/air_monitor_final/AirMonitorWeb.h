@@ -9,6 +9,7 @@
 class AirMonitorWeb {
  public:
   void begin(const char* ssid, const char* password) {
+    minuteStart = millis();
     if (!ssid[0]) {
       Serial.println("[Web] Wi-Fi not configured. See wifi_secrets.example.h.");
       return;
@@ -24,7 +25,6 @@ class AirMonitorWeb {
     WiFi.setAutoReconnect(true);
     WiFi.begin(ssid, password);
     enabled = true;
-    minuteStart = millis();
     Serial.println("[Web] Connecting to Wi-Fi...");
   }
 
@@ -37,17 +37,35 @@ class AirMonitorWeb {
   }
 
   void addPMS7003(unsigned long now, float pm1, float pm25, float pm10) {
-    if (!enabled) return;
     advanceHistory(now);
     addSample(3, pm1, now);
     addSample(4, pm25, now);
     addSample(5, pm10, now);
   }
 
+  bool readHourlyPM(unsigned long now, float& averagePM25, float& averagePM10) {
+    advanceHistory(now);
+    if (storedRows < HOUR_MINUTES) return false;
+
+    const size_t first = (nextRow + HISTORY_SIZE - HOUR_MINUTES) % HISTORY_SIZE;
+    float sumPM25 = 0.0f;
+    float sumPM10 = 0.0f;
+    for (size_t minute = 0; minute < HOUR_MINUTES; ++minute) {
+      const float* sample = history[(first + minute) % HISTORY_SIZE];
+      if (!isfinite(sample[4]) || !isfinite(sample[5])) return false;
+      sumPM25 += sample[4];
+      sumPM10 += sample[5];
+    }
+
+    averagePM25 = sumPM25 / HOUR_MINUTES;
+    averagePM10 = sumPM10 / HOUR_MINUTES;
+    return true;
+  }
+
   void poll() {
-    if (!enabled) return;
     const unsigned long now = millis();
     advanceHistory(now);
+    if (!enabled) return;
 
     if (WiFi.status() != WL_CONNECTED) {
       if (listening) {
@@ -72,7 +90,8 @@ class AirMonitorWeb {
 
  private:
   static constexpr size_t METRIC_COUNT = 6;
-  static constexpr size_t HISTORY_SIZE = 24 * 60;
+  static constexpr size_t HOUR_MINUTES = 60;
+  static constexpr size_t HISTORY_SIZE = 24 * HOUR_MINUTES;
   static constexpr unsigned long MINUTE_MS = 60000;
   static constexpr unsigned long LIVE_MAX_AGE_MS = 15000;
   static constexpr unsigned long ADDRESS_PRINT_INTERVAL_MS = 30000;
