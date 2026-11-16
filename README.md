@@ -2,7 +2,7 @@
 
 An indoor air quality monitor built with ESP32, displaying real-time readings on a 3.7" e-paper display. Measures CO2, temperature, humidity, and particulate matter (PM1.0, PM2.5, PM10).
 
-Sensors run continuously for stable readings. The display updates every 10 minutes.
+Sensors run continuously for stable readings. The display updates every 2 minutes.
 
 [![Watch the video](photos/display.jpeg)](https://youtu.be/02VMEx7p5A8)
 
@@ -176,7 +176,7 @@ The ESP32 sometimes needs manual help entering upload mode:
 - Make sure all 8 e-paper wires are firmly connected
 - Verify you are using GPIO23 for SDA and GPIO18 for SCL (not the I2C pins GPIO21/22)
 - The e-paper takes 3–5 seconds to refresh and will flicker — this is normal
-- The display updates immediately on first boot, then every 10 minutes
+- The splash screen appears on boot. Sensor readings appear after the PMS7003 warm-up, then refresh every 2 minutes.
 
 ### ❌ CO2 values are unrealistically high (e.g. 3000+ ppm)
 
@@ -247,13 +247,13 @@ The e-paper display retains its image without power — this is a feature, not a
 E-paper displays refresh by rapidly cycling pixels between black and white. This flickering is completely normal and lasts 3–5 seconds.
 
 **Q: How often does it update the display?**
-Every 10 minutes. You can change this by editing `DISPLAY_INTERVAL_MS` at the top of the sketch:
+Every 2 minutes. You can change this by editing `DISPLAY_INTERVAL_MS` at the top of `air_monitor_final.ino`:
 ```cpp
-#define DISPLAY_INTERVAL_MS  (10UL * 60UL * 1000UL)  // change 10 to any number of minutes
+constexpr unsigned long DISPLAY_INTERVAL_MS = 120000;
 ```
 
 **Q: How often does it read the sensors?**
-Continuously — the SCD40 produces a new reading every 5 seconds and the PMS7003 is always on. The Serial Monitor prints a summary every 30 seconds.
+Continuously — the SCD40 produces a new reading every 5 seconds and the PMS7003 is always on. The Serial Monitor prints each valid SCD40 reading and reports the latest PM values at each display refresh.
 
 **Q: The CO2 reading seems too high indoors — is it broken?**
 Probably not. Indoor CO2 levels above 1500 ppm are very common in closed rooms, especially bedrooms and offices. Try opening a window — you should see values drop toward 400–600 ppm within minutes. If values stay above 2000 ppm even outdoors, the sensor may need calibration (see Troubleshooting above).
@@ -302,7 +302,7 @@ No — e-paper retains its image indefinitely with zero power. When you unplug t
 | Active (sensors + display update) | ~160 mA |
 | Active (sensors only, display idle) | ~100 mA |
 
-Sensors run continuously. The display updates every 10 minutes and consumes extra current only during the ~3 second refresh.
+Sensors run continuously. The display updates every 2 minutes and consumes extra current only during the ~3 second refresh.
 
 ---
 
