@@ -19,11 +19,18 @@
 #include <PMS.h>
 #include <HardwareSerial.h>
 #include "AirMonitorWeb.h"
+#include "AirMonitorMqtt.h"
 
 #if __has_include("wifi_secrets.h")
 #include "wifi_secrets.h"
 #else
 #include "wifi_secrets.example.h"
+#endif
+
+#if __has_include("mqtt_secrets.h")
+#include "mqtt_secrets.h"
+#else
+#include "mqtt_secrets.example.h"
 #endif
 
 // =============================================================
@@ -65,6 +72,7 @@ PMS::DATA      pmsData;
 
 SensirionI2cScd4x scd4x;
 AirMonitorWeb web;
+AirMonitorMqtt mqtt;
 
 // =============================================================
 // SENSOR DATA
@@ -349,6 +357,7 @@ void setup() {
 
   pmsSerial.begin(9600, SERIAL_8N1, PMS_RX_PIN, PMS_TX_PIN);
   web.begin(WIFI_SSID, WIFI_PASSWORD);
+  mqtt.begin(MQTT_HOST, MQTT_PORT, MQTT_USERNAME, MQTT_PASSWORD);
   measurementStart = millis();
 }
 
@@ -373,5 +382,17 @@ void loop() {
   }
 
   web.poll();
+  const unsigned long publishNow = millis();
+  const bool scdFresh = scd40_ok && publishNow - lastScd40Sample < SAMPLE_MAX_AGE_MS;
+  const bool pmsFresh = pms_ok && publishNow - lastPmsSample < SAMPLE_MAX_AGE_MS;
+  const float mqttValues[6] = {
+    scdFresh ? float(co2) : NAN,
+    scdFresh ? temperature : NAN,
+    scdFresh ? humidity : NAN,
+    pmsFresh ? float(pm1) : NAN,
+    pmsFresh ? float(pm25) : NAN,
+    pmsFresh ? float(pm10) : NAN
+  };
+  mqtt.poll(publishNow, mqttValues);
   delay(1);
 }

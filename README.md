@@ -166,6 +166,63 @@ Fill in `WIFI_SSID` and `WIFI_PASSWORD` for a 2.4 GHz network in `wifi_secrets.h
 
 The dashboard shows live readings and up to 24 hours of one-minute averages. History is held in RAM and starts over on restart. It works over the local network without an internet connection. When Wi-Fi credentials are left blank, the firmware runs the sensors and e-paper with the web dashboard disabled.
 
+## Home Assistant via MQTT
+
+The ESP32 publishes CO2, temperature, humidity, PM1.0, PM2.5 and PM10 to the MQTT broker at `192.168.0.10:1883` every 30 seconds. MQTT discovery creates one **Air Monitor** device with six sensors. Each ESP32 uses its Wi-Fi MAC address for stable, distinct entity identifiers.
+
+### Firmware setup
+
+1. Install **PubSubClient by Nick O’Leary** using Arduino Library Manager, in addition to the sensor/display libraries above.
+2. Keep your existing `wifi_secrets.h`. Create a separate local MQTT configuration from the repository root:
+
+   ```bash
+   cp -n firmware/air_monitor_final/mqtt_secrets.example.h firmware/air_monitor_final/mqtt_secrets.h
+   nano firmware/air_monitor_final/mqtt_secrets.h
+   ```
+
+3. Set `MQTT_USERNAME` and `MQTT_PASSWORD` to the login created on the broker. The default host is `192.168.0.10` and the port is `1883`. Git ignores `mqtt_secrets.h`. To disable MQTT, set `MQTT_HOST` to an empty string.
+4. Upload `firmware/air_monitor_final/air_monitor_final.ino`. The Serial Monitor at 115200 baud prints `[MQTT] Connected` after a successful connection. Connection failures include the PubSubClient error code and retry every 30 seconds.
+
+### Server setup at 192.168.0.10
+
+For an SSH-based setup on the Ubuntu server, use the [Claude setup prompt](homeassistant/CLAUDE_SETUP.md).
+
+For Home Assistant Container on Ubuntu, run a separate **Eclipse Mosquitto 2** broker, either as a Compose service or a system service. The firmware expects standard MQTT on TCP port 1883 on the local network.
+
+When adding Mosquitto to the existing Compose project:
+
+- Publish TCP port `1883` to the Ubuntu host.
+- Persist `/mosquitto/config` and `/mosquitto/data` on the host.
+- Configure `listener 1883`, `allow_anonymous false`, `password_file /mosquitto/config/passwords`, `persistence true` and `persistence_location /mosquitto/data/` in `mosquitto.conf`.
+- Create a broker account for this monitor with `mosquitto_passwd`. Configure the same credentials locally in `mqtt_secrets.h`. Give Home Assistant a broker account too.
+- Ensure the broker accounts can publish/subscribe to `airmonitor/#` and `homeassistant/#` if using topic ACLs.
+- Use `restart: unless-stopped` and make the persisted files writable/readable by the Mosquitto container user as appropriate.
+
+In Home Assistant, open **Settings → Devices & services → Add integration → MQTT**. Connect it to `192.168.0.10`, port `1883`, with the broker login. Keep discovery enabled with the default `homeassistant` prefix and the default `homeassistant/status` birth topic. The ESP32 republishes discovery on reconnect and when Home Assistant announces startup.
+
+### Persistent history
+
+Home Assistant's Recorder stores the six sensor entities in its database. The discovery payload sets `state_class: measurement`, device classes and units so that Home Assistant also creates long-term statistics. Keep these sensors included in Recorder if your installation uses include/exclude filters.
+
+For 30 days of detailed history, merge this into Home Assistant's existing `configuration.yaml` and restart Home Assistant. Edit the existing `recorder` section if present:
+
+```yaml
+recorder:
+  purge_keep_days: 30
+```
+
+Persist the Home Assistant `/config` directory in Docker, including its default `home-assistant_v2.db` database. Home Assistant keeps hourly long-term statistics beyond the detailed-history retention period. Adjust 30 days to suit your storage needs.
+
+### Verification and interruptions
+
+- After upload and broker connection, MQTT integration should show **Air Monitor** with all six sensors. Readings should update within 30 seconds after valid sensor samples become available.
+- Open a sensor's History view, wait for several updates, restart Home Assistant and verify earlier readings remain. Long-term statistics require time to accumulate.
+- Broker discovery and availability messages are retained. Measurement payloads are not retained. Missing or older-than-15-second sensor samples are sent as `null`, which Home Assistant represents as unknown. Entities expire after 90 seconds without a state message, and MQTT Last Will marks the device offline on a lost connection.
+- The ESP32 reconnects automatically. Measurements during a network or server outage are not backfilled into Home Assistant. Its local 24-hour RAM graphs are independent of Home Assistant history.
+- Temperature and humidity are sent as measured, including their existing startup settling period. This change adds no calibration offset.
+
+Official references are the [Home Assistant MQTT documentation](https://www.home-assistant.io/integrations/mqtt/), [MQTT sensor documentation](https://www.home-assistant.io/integrations/sensor.mqtt/), and [Recorder documentation](https://www.home-assistant.io/integrations/recorder/).
+
 ## 🔧 Troubleshooting
 
 ### ❌ The USB port does not appear in Arduino IDE

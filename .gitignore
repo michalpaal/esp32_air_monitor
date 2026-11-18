@@ -1,3 +1,4 @@
 .DS_Store
 **/.DS_Store
 firmware/air_monitor_final/wifi_secrets.h
+firmware/air_monitor_final/mqtt_secrets.h
