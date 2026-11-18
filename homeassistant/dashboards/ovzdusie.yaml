@@ -6,71 +6,59 @@
 #   „Editor surovej konfigurácie“ → vlož celý tento súbor → Uložiť.
 #
 # Vyžaduje package homeassistant/packages/air_monitor.yaml (hodinové priemery, EAQI, CO2 hodnotenie).
+#
+# Rozloženie: horný pás odznakov = rýchly prehľad, pod ním tri stĺpce podľa témy
+# (CO₂ | prachové častice | teplota a vlhkosť), každý s aktuálnou hodnotou a grafom za 24 h.
+# Dlhodobé štatistiky sú na samostatnej karte „Štatistiky“.
 
 title: Ovzdušie
 views:
-  - title: Ovzdušie
-    path: ovzdusie
+  # ═════════════ Prehľad ═════════════
+  - title: Prehľad
+    path: prehlad
     icon: mdi:air-filter
     type: sections
     max_columns: 3
-    sections:
-      # ───────────── Prehľad ─────────────
-      - type: grid
-        cards:
-          - type: heading
-            heading: Aktuálny stav
-            icon: mdi:home-thermometer
-          - type: tile
-            entity: sensor.air_monitor_kvalita_ovzdusia
-            name: Kvalita ovzdušia (EAQI 1 h)
-            color: green
-            grid_options: { columns: 12 }
-          - type: tile
-            entity: sensor.air_monitor_co2_hodnotenie
-            name: CO₂
-            color: blue
-            grid_options: { columns: 6 }
-          - type: tile
+    badges:
+      - type: entity
+        entity: sensor.air_monitor_kvalita_ovzdusia
+        name: Ovzdušie
+        show_name: true
+        color: green
+      - type: entity
+        entity: sensor.air_monitor_co2
+        name: CO₂
+        show_name: true
+        color: blue
+      - type: entity
+        entity: sensor.air_monitor_temperature
+        name: Teplota
+        show_name: true
+        color: red
+      - type: entity
+        entity: sensor.air_monitor_humidity
+        name: Vlhkosť
+        show_name: true
+        color: cyan
+      - type: entity
+        entity: binary_sensor.air_monitor_vyvetrat
+        name: Vyvetrať
+        show_name: true
+        color: amber
+        visibility:
+          - condition: state
             entity: binary_sensor.air_monitor_vyvetrat
-            name: Vyvetrať
-            color: amber
-            grid_options: { columns: 6 }
-          - type: tile
-            entity: sensor.air_monitor_temperature
-            name: Teplota
-            color: red
-            grid_options: { columns: 6 }
-          - type: tile
-            entity: sensor.air_monitor_humidity
-            name: Vlhkosť
-            color: cyan
-            grid_options: { columns: 6 }
-          - type: tile
-            entity: sensor.air_monitor_pm1_0
-            name: PM1.0
-            color: grey
-            grid_options: { columns: 4 }
-          - type: tile
-            entity: sensor.air_monitor_pm2_5_1h
-            name: PM2.5 1 h
-            color: grey
-            grid_options: { columns: 4 }
-          - type: tile
-            entity: sensor.air_monitor_pm10_1h
-            name: PM10 1 h
-            color: grey
-            grid_options: { columns: 4 }
-
-      # ───────────── Budíky ─────────────
+            state: "on"
+    sections:
+      # ───────────── CO₂ ─────────────
       - type: grid
         cards:
           - type: heading
-            heading: Okamžité hodnoty
-            icon: mdi:gauge
+            heading: CO₂
+            icon: mdi:molecule-co2
           - type: gauge
             entity: sensor.air_monitor_co2
-            name: CO₂
+            name: Aktuálne
             min: 400
             max: 2000
             needle: true
@@ -79,20 +67,37 @@ views:
               - { from: 800, color: "#7cb342", label: Dobré }
               - { from: 1000, color: "#f9a825", label: Zvýšené }
               - { from: 1400, color: "#c62828", label: Vysoké }
+            grid_options: { columns: 12 }
+          - type: tile
+            entity: sensor.air_monitor_co2_hodnotenie
+            name: Hodnotenie
+            color: blue
             grid_options: { columns: 6 }
-          - type: gauge
-            entity: sensor.air_monitor_humidity
-            name: Vlhkosť
-            min: 0
-            max: 100
-            needle: true
-            segments:
-              - { from: 0, color: "#f9a825", label: Suchý vzduch }
-              - { from: 40, color: "#2e7d32", label: Optimálna }
-              - { from: 60, color: "#f9a825", label: Vlhko }
-              - { from: 70, color: "#c62828", label: Riziko plesní }
+          - type: tile
+            entity: binary_sensor.air_monitor_vyvetrat
+            name: Vyvetrať
+            color: amber
             grid_options: { columns: 6 }
-          # Farby PM budíkov = pásma EAQI (EEA), orientačne pre okamžitú hodnotu
+          - type: history-graph
+            title: Posledných 24 h
+            hours_to_show: 24
+            entities:
+              - entity: sensor.air_monitor_co2
+                name: CO₂
+            grid_options: { columns: 12 }
+
+      # ───────────── Prachové častice ─────────────
+      - type: grid
+        cards:
+          - type: heading
+            heading: Prachové častice
+            icon: mdi:blur
+          - type: tile
+            entity: sensor.air_monitor_kvalita_ovzdusia
+            name: Kvalita ovzdušia (EAQI, priemer za 1 h)
+            color: green
+            grid_options: { columns: 12 }
+          # Farby budíkov = pásma EAQI (EEA), orientačne pre okamžitú hodnotu
           - type: gauge
             entity: sensor.air_monitor_pm2_5
             name: PM2.5
@@ -121,22 +126,8 @@ views:
               - { from: 195.5, color: "#960032", label: Veľmi zlá }
               - { from: 270.5, color: "#7d2181", label: Extrémne zlá }
             grid_options: { columns: 6 }
-
-      # ───────────── Posledných 24 h ─────────────
-      - type: grid
-        cards:
-          - type: heading
-            heading: Posledných 24 hodín
-            icon: mdi:chart-line
           - type: history-graph
-            title: CO₂
-            hours_to_show: 24
-            entities:
-              - entity: sensor.air_monitor_co2
-                name: CO₂
-            grid_options: { columns: 12 }
-          - type: history-graph
-            title: Prachové častice
+            title: Posledných 24 h
             hours_to_show: 24
             entities:
               - entity: sensor.air_monitor_pm1_0
@@ -146,23 +137,50 @@ views:
               - entity: sensor.air_monitor_pm10
                 name: PM10
             grid_options: { columns: 12 }
+
+      # ───────────── Teplota a vlhkosť ─────────────
+      - type: grid
+        cards:
+          - type: heading
+            heading: Teplota a vlhkosť
+            icon: mdi:home-thermometer
+          - type: tile
+            entity: sensor.air_monitor_temperature
+            name: Teplota
+            color: red
+            grid_options: { columns: 6 }
+          - type: tile
+            entity: sensor.air_monitor_humidity
+            name: Vlhkosť
+            color: cyan
+            grid_options: { columns: 6 }
           - type: history-graph
-            title: Teplota a vlhkosť
+            title: Teplota – 24 h
             hours_to_show: 24
             entities:
               - entity: sensor.air_monitor_temperature
                 name: Teplota
+            grid_options: { columns: 12 }
+          - type: history-graph
+            title: Vlhkosť – 24 h
+            hours_to_show: 24
+            entities:
               - entity: sensor.air_monitor_humidity
                 name: Vlhkosť
             grid_options: { columns: 12 }
 
-      # ───────────── Dlhodobé štatistiky ─────────────
+  # ═════════════ Dlhodobé štatistiky ═════════════
+  - title: Štatistiky
+    path: statistiky
+    icon: mdi:chart-box-outline
+    type: sections
+    max_columns: 2
+    sections:
       - type: grid
-        column_span: 3
         cards:
           - type: heading
-            heading: Dlhodobý vývoj (30 dní)
-            icon: mdi:chart-box-outline
+            heading: CO₂ a prachové častice (30 dní)
+            icon: mdi:chart-line
           - type: statistics-graph
             title: CO₂ – denný priemer a maximum
             entities:
@@ -185,6 +203,11 @@ views:
             days_to_show: 30
             chart_type: line
             grid_options: { columns: 12 }
+      - type: grid
+        cards:
+          - type: heading
+            heading: Teplota a vlhkosť (30 dní)
+            icon: mdi:chart-line
           - type: statistics-graph
             title: Teplota – denné minimum, priemer, maximum
             entities:
@@ -194,7 +217,7 @@ views:
             period: day
             days_to_show: 30
             chart_type: line
-            grid_options: { columns: 6 }
+            grid_options: { columns: 12 }
           - type: statistics-graph
             title: Vlhkosť – denný priemer
             entities:
@@ -204,4 +227,4 @@ views:
             period: day
             days_to_show: 30
             chart_type: line
-            grid_options: { columns: 6 }
+            grid_options: { columns: 12 }
