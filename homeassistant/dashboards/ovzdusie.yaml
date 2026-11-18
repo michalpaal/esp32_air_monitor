@@ -1,0 +1,207 @@
+# Dashboard „Ovzdušie“ pre Air Monitor (len vstavané karty, bez HACS)
+#
+# Inštalácia:
+#   Nastavenia → Dashboardy → Pridať dashboard → „Nový dashboard od začiatku“
+#   (názov Ovzdušie, URL dashboard-ovzdusie, ikona mdi:air-filter) → otvor ho → ceruzka → ⋮ →
+#   „Editor surovej konfigurácie“ → vlož celý tento súbor → Uložiť.
+#
+# Vyžaduje package homeassistant/packages/air_monitor.yaml (hodinové priemery, EAQI, CO2 hodnotenie).
+
+title: Ovzdušie
+views:
+  - title: Ovzdušie
+    path: ovzdusie
+    icon: mdi:air-filter
+    type: sections
+    max_columns: 3
+    sections:
+      # ───────────── Prehľad ─────────────
+      - type: grid
+        cards:
+          - type: heading
+            heading: Aktuálny stav
+            icon: mdi:home-thermometer
+          - type: tile
+            entity: sensor.air_monitor_kvalita_ovzdusia
+            name: Kvalita ovzdušia (EAQI 1 h)
+            color: green
+            grid_options: { columns: 12 }
+          - type: tile
+            entity: sensor.air_monitor_co2_hodnotenie
+            name: CO₂
+            color: blue
+            grid_options: { columns: 6 }
+          - type: tile
+            entity: binary_sensor.air_monitor_vyvetrat
+            name: Vyvetrať
+            color: amber
+            grid_options: { columns: 6 }
+          - type: tile
+            entity: sensor.air_monitor_temperature
+            name: Teplota
+            color: red
+            grid_options: { columns: 6 }
+          - type: tile
+            entity: sensor.air_monitor_humidity
+            name: Vlhkosť
+            color: cyan
+            grid_options: { columns: 6 }
+          - type: tile
+            entity: sensor.air_monitor_pm1_0
+            name: PM1.0
+            color: grey
+            grid_options: { columns: 4 }
+          - type: tile
+            entity: sensor.air_monitor_pm2_5_1h
+            name: PM2.5 1 h
+            color: grey
+            grid_options: { columns: 4 }
+          - type: tile
+            entity: sensor.air_monitor_pm10_1h
+            name: PM10 1 h
+            color: grey
+            grid_options: { columns: 4 }
+
+      # ───────────── Budíky ─────────────
+      - type: grid
+        cards:
+          - type: heading
+            heading: Okamžité hodnoty
+            icon: mdi:gauge
+          - type: gauge
+            entity: sensor.air_monitor_co2
+            name: CO₂
+            min: 400
+            max: 2000
+            needle: true
+            segments:
+              - { from: 400, color: "#2e7d32", label: Výborné }
+              - { from: 800, color: "#7cb342", label: Dobré }
+              - { from: 1000, color: "#f9a825", label: Zvýšené }
+              - { from: 1400, color: "#c62828", label: Vysoké }
+            grid_options: { columns: 6 }
+          - type: gauge
+            entity: sensor.air_monitor_humidity
+            name: Vlhkosť
+            min: 0
+            max: 100
+            needle: true
+            segments:
+              - { from: 0, color: "#f9a825", label: Suchý vzduch }
+              - { from: 40, color: "#2e7d32", label: Optimálna }
+              - { from: 60, color: "#f9a825", label: Vlhko }
+              - { from: 70, color: "#c62828", label: Riziko plesní }
+            grid_options: { columns: 6 }
+          # Farby PM budíkov = pásma EAQI (EEA), orientačne pre okamžitú hodnotu
+          - type: gauge
+            entity: sensor.air_monitor_pm2_5
+            name: PM2.5
+            min: 0
+            max: 150
+            needle: true
+            segments:
+              - { from: 0, color: "#50f0e6", label: Dobrá }
+              - { from: 5.5, color: "#50ccaa", label: Prijateľná }
+              - { from: 15.5, color: "#f0e641", label: Stredná }
+              - { from: 50.5, color: "#ff5050", label: Zlá }
+              - { from: 90.5, color: "#960032", label: Veľmi zlá }
+              - { from: 140.5, color: "#7d2181", label: Extrémne zlá }
+            grid_options: { columns: 6 }
+          - type: gauge
+            entity: sensor.air_monitor_pm10
+            name: PM10
+            min: 0
+            max: 300
+            needle: true
+            segments:
+              - { from: 0, color: "#50f0e6", label: Dobrá }
+              - { from: 15.5, color: "#50ccaa", label: Prijateľná }
+              - { from: 45.5, color: "#f0e641", label: Stredná }
+              - { from: 120.5, color: "#ff5050", label: Zlá }
+              - { from: 195.5, color: "#960032", label: Veľmi zlá }
+              - { from: 270.5, color: "#7d2181", label: Extrémne zlá }
+            grid_options: { columns: 6 }
+
+      # ───────────── Posledných 24 h ─────────────
+      - type: grid
+        cards:
+          - type: heading
+            heading: Posledných 24 hodín
+            icon: mdi:chart-line
+          - type: history-graph
+            title: CO₂
+            hours_to_show: 24
+            entities:
+              - entity: sensor.air_monitor_co2
+                name: CO₂
+            grid_options: { columns: 12 }
+          - type: history-graph
+            title: Prachové častice
+            hours_to_show: 24
+            entities:
+              - entity: sensor.air_monitor_pm1_0
+                name: PM1.0
+              - entity: sensor.air_monitor_pm2_5
+                name: PM2.5
+              - entity: sensor.air_monitor_pm10
+                name: PM10
+            grid_options: { columns: 12 }
+          - type: history-graph
+            title: Teplota a vlhkosť
+            hours_to_show: 24
+            entities:
+              - entity: sensor.air_monitor_temperature
+                name: Teplota
+              - entity: sensor.air_monitor_humidity
+                name: Vlhkosť
+            grid_options: { columns: 12 }
+
+      # ───────────── Dlhodobé štatistiky ─────────────
+      - type: grid
+        column_span: 3
+        cards:
+          - type: heading
+            heading: Dlhodobý vývoj (30 dní)
+            icon: mdi:chart-box-outline
+          - type: statistics-graph
+            title: CO₂ – denný priemer a maximum
+            entities:
+              - entity: sensor.air_monitor_co2
+                name: CO₂
+            stat_types: [mean, max]
+            period: day
+            days_to_show: 30
+            chart_type: line
+            grid_options: { columns: 12 }
+          - type: statistics-graph
+            title: PM2.5 a PM10 – denný priemer
+            entities:
+              - entity: sensor.air_monitor_pm2_5
+                name: PM2.5
+              - entity: sensor.air_monitor_pm10
+                name: PM10
+            stat_types: [mean]
+            period: day
+            days_to_show: 30
+            chart_type: line
+            grid_options: { columns: 12 }
+          - type: statistics-graph
+            title: Teplota – denné minimum, priemer, maximum
+            entities:
+              - entity: sensor.air_monitor_temperature
+                name: Teplota
+            stat_types: [min, mean, max]
+            period: day
+            days_to_show: 30
+            chart_type: line
+            grid_options: { columns: 6 }
+          - type: statistics-graph
+            title: Vlhkosť – denný priemer
+            entities:
+              - entity: sensor.air_monitor_humidity
+                name: Vlhkosť
+            stat_types: [mean]
+            period: day
+            days_to_show: 30
+            chart_type: line
+            grid_options: { columns: 6 }

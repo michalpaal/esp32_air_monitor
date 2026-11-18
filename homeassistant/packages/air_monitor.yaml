@@ -1,0 +1,91 @@
+# Air Monitor – odvodené senzory pre dashboard (Home Assistant package)
+#
+# Inštalácia:
+#   1. Skopíruj súbor do /config/packages/air_monitor.yaml
+#   2. V configuration.yaml musí byť:
+#        homeassistant:
+#          packages: !include_dir_named packages
+#   3. Vývojárske nástroje → YAML → Skontrolovať konfiguráciu → Reštartovať
+#
+# Predpokladá entity z MQTT discovery firmvéru:
+#   sensor.air_monitor_co2, sensor.air_monitor_temperature,
+#   sensor.air_monitor_humidity, sensor.air_monitor_pm1_0,
+#   sensor.air_monitor_pm2_5, sensor.air_monitor_pm10
+# Ak ich máš pomenované inak (napr. pri dvoch monitoroch _2), uprav ich tu aj v dashboarde.
+
+sensor:
+  # Hodinové kĺzavé priemery – rovnaký základ ako hodnotenie na e-paper displeji
+  - platform: statistics
+    name: "Air Monitor PM2.5 1h"
+    unique_id: air_monitor_pm2_5_1h_mean
+    entity_id: sensor.air_monitor_pm2_5
+    state_characteristic: mean
+    max_age:
+      hours: 1
+    sampling_size: 300
+    precision: 1
+
+  - platform: statistics
+    name: "Air Monitor PM10 1h"
+    unique_id: air_monitor_pm10_1h_mean
+    entity_id: sensor.air_monitor_pm10
+    state_characteristic: mean
+    max_age:
+      hours: 1
+    sampling_size: 300
+    precision: 1
+
+template:
+  - sensor:
+      # Európsky index kvality ovzdušia (EEA, hodinové pásma) 1 = dobrá … 6 = extrémne zlá
+      # Hranice zhodné s firmvérom: PM2.5 5/15/50/90/140, PM10 15/45/120/195/270 µg/m³
+      - name: "Air Monitor EAQI PM2.5"
+        unique_id: air_monitor_eaqi_pm2_5
+        icon: mdi:blur
+        state_class: measurement
+        availability: "{{ has_value('sensor.air_monitor_pm2_5_1h') }}"
+        state: >
+          {% set r = states('sensor.air_monitor_pm2_5_1h') | float | round(0) %}
+          {{ ([5, 15, 50, 90, 140] | select('lt', r) | list | count) + 1 }}
+
+      - name: "Air Monitor EAQI PM10"
+        unique_id: air_monitor_eaqi_pm10
+        icon: mdi:blur-radial
+        state_class: measurement
+        availability: "{{ has_value('sensor.air_monitor_pm10_1h') }}"
+        state: >
+          {% set r = states('sensor.air_monitor_pm10_1h') | float | round(0) %}
+          {{ ([15, 45, 120, 195, 270] | select('lt', r) | list | count) + 1 }}
+
+      - name: "Air Monitor kvalita ovzdušia"
+        unique_id: air_monitor_air_quality
+        icon: mdi:air-filter
+        availability: >
+          {{ has_value('sensor.air_monitor_eaqi_pm2_5') or has_value('sensor.air_monitor_eaqi_pm10') }}
+        state: >
+          {% set i = [states('sensor.air_monitor_eaqi_pm2_5') | int(0),
+                      states('sensor.air_monitor_eaqi_pm10') | int(0)] | max %}
+          {{ ['Neznáma', 'Dobrá', 'Prijateľná', 'Stredná', 'Zlá', 'Veľmi zlá', 'Extrémne zlá'][i] }}
+
+      - name: "Air Monitor CO2 hodnotenie"
+        unique_id: air_monitor_co2_rating
+        icon: mdi:molecule-co2
+        availability: "{{ has_value('sensor.air_monitor_co2') }}"
+        state: >
+          {% set c = states('sensor.air_monitor_co2') | float %}
+          {% if c < 800 %}Výborné
+          {% elif c < 1000 %}Dobré
+          {% elif c < 1400 %}Zvýšené
+          {% else %}Vysoké{% endif %}
+
+  - binary_sensor:
+      # Zapne sa, keď CO2 drží nad 1000 ppm aspoň 5 minút – vhodné pre notifikácie
+      - name: "Air Monitor vyvetrať"
+        unique_id: air_monitor_ventilate
+        icon: mdi:window-open-variant
+        availability: "{{ has_value('sensor.air_monitor_co2') }}"
+        state: "{{ states('sensor.air_monitor_co2') | float(0) > 1000 }}"
+        delay_on:
+          minutes: 5
+        delay_off:
+          minutes: 5
